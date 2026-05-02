@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Envision FinOps Dashboard | Accenture</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <style>
+    :root { --sidebar: 256px; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; margin: 0; }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: var(--sidebar); position: fixed; top: 0; left: 0; height: 100vh;
+      background: linear-gradient(175deg, #0f172a 0%, #1e3a5f 100%);
+      overflow-y: auto; z-index: 200; display: flex; flex-direction: column;
+    }
+    #sidebar::-webkit-scrollbar { width: 3px; }
+    #sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+    .nav-section { padding: 6px 12px 2px; font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: .08em; margin-top: 8px; }
+    .nav-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 16px; margin: 1px 8px; border-radius: 7px;
+      color: #94a3b8; font-size: 13px; text-decoration: none; cursor: pointer;
+      transition: all .15s; border: none; background: none; width: calc(100% - 16px); text-align: left;
+    }
+    .nav-link:hover { background: rgba(99,179,237,.12); color: #93c5fd; }
+    .nav-link.active { background: rgba(59,130,246,.25); color: #60a5fa; font-weight: 600; }
+    .nav-link i { width: 16px; font-size: 12px; flex-shrink: 0; }
+
+    /* ── Main ── */
+    #main { margin-left: var(--sidebar); min-height: 100vh; }
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(255,255,255,.92); backdrop-filter: blur(10px);
+      border-bottom: 1px solid #e2e8f0;
+      padding: 14px 28px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .content { padding: 28px; }
+
+    /* ── Cards ── */
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+    .card-pad { padding: 20px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 16px; }
+    .kpi-card { background: #fff; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+    .kpi-value { font-size: 26px; font-weight: 700; color: #0f172a; line-height: 1.2; margin: 4px 0; }
+    .kpi-label { font-size: 12px; color: #64748b; font-weight: 500; }
+    .kpi-change { font-size: 12px; font-weight: 600; margin-top: 4px; }
+    .kpi-change.up { color: #ef4444; }
+    .kpi-change.up-good { color: #10b981; }
+    .kpi-change.down-good { color: #10b981; }
+
+    /* ── Section headings ── */
+    /* 多页模式：默认隐藏所有 section，只显示当前激活的页 */
+    .section { margin-bottom: 36px; scroll-margin-top: 80px; display: none; }
+    .section.active { display: block; animation: fadeIn .25s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .section-title {
+      font-size: 18px; font-weight: 700; color: #0f172a;
+      border-left: 4px solid #3b82f6; padding-left: 12px; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-sub { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 10px; margin-top: 18px; }
+
+    /* ── Charts ── */
+    .chart-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+    .chart-box h3 { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 14px; }
+    /* 限制 Chart.js canvas 高度，避免 responsive 模式下无限增长 */
+    .chart-box canvas { max-height: 320px !important; height: 320px !important; width: 100% !important; }
+
+    /* ── Ontology 工具栏按钮 ── */
+    .onto-tool-btn {
+      background: rgba(30,41,59,.7); border: 1px solid #334155;
+      color: #cbd5e1; font-size: 11px; font-weight: 600;
+      padding: 5px 10px; border-radius: 6px; cursor: pointer;
+      transition: all .15s; backdrop-filter: blur(8px);
+    }
+    .onto-tool-btn:hover { background: #334155; color: #fff; border-color: #475569; }
+    .onto-tool-btn[data-active="true"] { background: #a100ff; color: #fff; border-color: #a100ff; }
+    .onto-select {
+      background: rgba(30,41,59,.7); border: 1px solid #334155;
+      color: #cbd5e1; font-size: 11px; font-weight: 600;
+      padding: 5px 10px; border-radius: 6px; backdrop-filter: blur(8px);
+    }
+    .onto-select option { background: #0f172a; color: #f1f5f9; }
+    .charts-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .charts-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+    thead th { background: #f8fafc; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .06em; padding: 11px 14px; text-align: left; white-space: nowrap; }
+    tbody td { padding: 11px 14px; font-size: 13px; color: #374151; border-top: 1px solid #f1f5f9; }
+    tbody tr:hover td { background: #f8fafc; }
+
+    /* ── Badges ── */
+    .badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .badge-red { background: #fef2f2; color: #dc2626; }
+    .badge-orange { background: #fff7ed; color: #ea580c; }
+    .badge-yellow { background: #fefce8; color: #ca8a04; }
+    .badge-green { background: #f0fdf4; color: #16a34a; }
+    .badge-blue { background: #eff6ff; color: #2563eb; }
+    .badge-gray { background: #f1f5f9; color: #475569; }
+
+    /* ── Recommendation cards ── */
+    .rec-card { border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; border-left: 4px solid; }
+    .rec-critical { border-color: #dc2626; background: #fff5f5; }
+    .rec-high { border-color: #f97316; background: #fff8f0; }
+    .rec-medium { border-color: #eab308; background: #fefdf0; }
+    .rec-low { border-color: #22c55e; background: #f0fdf4; }
+
+    /* ── Progress bar ── */
+    .prog-wrap { height: 7px; background: #e5e7eb; border-radius: 99px; overflow: hidden; margin-top: 4px; }
+    .prog-fill { height: 100%; border-radius: 99px; transition: width .4s ease; }
+
+    /* ── Priority matrix ── */
+    .matrix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .matrix-cell { border-radius: 10px; padding: 14px; }
+
+    /* ── Savings highlight ── */
+    .saving-big { font-size: 22px; font-weight: 800; color: #059669; }
+    .saving-med { font-size: 15px; font-weight: 700; color: #059669; }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px solid #e2e8f0; margin: 24px 0; }
+
+    /* ── Print button ── */
+    .btn-primary {
+      background: #3b82f6; color: #fff; border: none; padding: 8px 18px;
+      border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; transition: background .15s;
+    }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-outline {
+      background: transparent; color: #3b82f6; border: 1.5px solid #3b82f6;
+      padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
+    }
+    .btn-outline:hover { background: #eff6ff; }
+
+    /* ── Info tags ── */
+    .info-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+    .info-tag { font-size: 12px; background: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 6px; display: flex; align-items: center; gap: 5px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .charts-2col, .charts-3col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Animations ── */
+    .section { animation: fadeUp .3s ease both; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── Divider tag ── */
+    .cat-header { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; padding: 6px 12px; border-radius: 6px; display: inline-block; margin: 16px 0 8px; }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     SIDEBAR
+════════════════════════════════════════════ -->
+<aside id="sidebar" role="navigation" aria-label="主导航">
+  <!-- Brand：Accenture 官方品牌锁标（wordmark + 紫色 ">" 标志） -->
+  <div style="padding: 22px 16px 16px;">
+    <a href="https://www.accenture.com" target="_blank" rel="noopener noreferrer"
+       style="display:flex;align-items:center;gap:6px;text-decoration:none;margin-bottom:8px;"
+       aria-label="Accenture">
+      <span style="color:#fff;font-family:'Graphik','Helvetica Neue',Arial,sans-serif;font-weight:500;font-size:20px;letter-spacing:-.3px;line-height:1;">accenture</span>
+      <img src="https://cdn.simpleicons.org/accenture/A100FF"
+           alt=""
+           aria-hidden="true"
+           style="display:block;height:10px;width:10px;" />
+    </a>
+    <div style="color:#cbd5e1;font-weight:600;font-size:12px;letter-spacing:.04em;">FinOps Dashboard</div>
+    <div style="color:#64748b;font-size:11px;margin-top:2px;">Envision Group</div>
+  </div>
+
+  <div style="padding: 0 12px 8px; font-size:11px; color:#475569; border-bottom:1px solid #1e293b; margin-bottom:8px;">
+    <span style="background:#1e3a5f;color:#60a5fa;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">DEMO DATA</span>
+    <span style="color:#64748b;margin-left:8px;">Apr 2026</span>
+  </div>
+
+  <div class="nav-section">概览</div>
+  <button class="nav-link active" onclick="goSection('summary')" aria-current="page">
+    <i class="fas fa-th-large"></i> 执行摘要
+  </button>
+  <button class="nav-link" onclick="goSection('cost-overview')">
+    <i class="fas fa-dollar-sign"></i> 云成本总览
+  </button>
+  <button class="nav-link" onclick="goSection('ontology')">
+    <i class="fas fa-project-diagram"></i> FinOps Ontology
+  </button>
+
+  <div class="nav-section">资源分析</div>
+  <button class="nav-link" onclick="goSection('compute')">
+    <i class="fas fa-server"></i> 计算资源 EC2/EKS
+  </button>
+  <button class="nav-link" onclick="goSection('database')">
+    <i class="fas fa-database"></i> 数据库 RDS
+  </button>
+  <button class="nav-link" onclick="goSection('storage')">
+    <i class="fas fa-hdd"></i> 存储 S3/EBS
+  </button>
+  <button class="nav-link" onclick="goSection('network')">
+    <i class="fas fa-network-wired"></i> 网络使用
+  </button>
+  <button class="nav-link" onclick="goSection('license')">
+    <i class="fas fa-key"></i> 许可证管理
+  </button>
+
+  <div class="nav-section">AI FinOps（新）</div>
+  <button class="nav-link" onclick="goSection('ai-finops')">
+    <i class="fas fa-robot"></i> AI &amp; GenAI 成本
+  </button>
+
+  <div class="nav-section">FinOps 洞察</div>
+  <button class="nav-link" onclick="goSection('analysis')">
+    <i class="fas fa-lightbulb"></i> 分析报告
+  </button>
+  <button class="nav-link" onclick="goSection('action-plan')">
+    <i class="fas fa-tasks"></i> 行动指南
+  </button>
+
+  <!-- Bottom info -->
+  <div style="margin-top:auto;padding:16px;border-top:1px solid #1e293b;">
+    <div style="font-size:11px;color:#475569;line-height:1.6;">
+      <div><i class="fas fa-calendar-alt" style="width:14px;"></i> 数据周期：Apr 2026</div>
+      <div><i class="fas fa-sync-alt" style="width:14px;"></i> 更新：May 2, 2026</div>
+      <div style="margin-top:8px;color:#334155;font-size:10px;">Powered by Accenture FinOps</div>
+    </div>
+  </div>
+</aside>
+
+<!-- ════════════════════════════════════════════
+     MAIN
+════════════════════════════════════════════ -->
+<main id="main">
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div>
+      <span style="font-weight:700;font-size:16px;color:#0f172a;">Envision Group — FinOps Dashboard</span>
+      <span style="margin-left:12px;font-size:12px;color:#64748b;">数据周期：2026年4月 &nbsp;|&nbsp; 生成时间：2026年5月2日</span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <span style="background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:700;">⚠ DEMO 演示数据</span>
+      <button class="btn-primary" onclick="window.print()"><i class="fas fa-print"></i> 导出报告</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ══════════════════════════════════════
+         SECTION 1: EXECUTIVE SUMMARY
+    ══════════════════════════════════════ -->
+    <section id="summary" class="section">
+      <div class="section-title"><i class="fas fa-th-large" style="color:#3b82f6;"></i> 执行摘要 Executive Summary</div>
+
+      <div class="info-row">
+        <span class="info-tag"><i class="fas fa-building"></i> Envision Group</span>
+        <span class="info-tag"><i class="fab fa-aws"></i> AWS 主要云平台</span>
+        <span class="info-tag"><i class="fas fa-users"></i> ~500 云用户</span>
+        <span class="info-tag"><i class="fas fa-calendar"></i> 2026年4月账单</span>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid" id="kpi-grid"></div>
+
+      <!-- Summary Chart -->
+      <div style="margin-top:16px;" class="chart-box">
+        <h3><i class="fas fa-chart-area" style="color:#3b82f6;margin-right:6px;"></i>12个月云费用趋势 vs 预算</h3>
+        <canvas id="trendChart" height="90"></canvas>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 2: CLOUD COST OVERVIEW
+    ══════════════════════════════════════ -->
+    <section id="cost-overview" class="section">
+      <div class="section-title"><i class="fas fa-dollar-sign" style="color:#8b5cf6;"></i> 云成本总览 Cloud Cost Overview</div>
+
+      <div class="charts-2col" style="margin-bottom:16px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-pie" style="color:#8b5cf6;margin-right:6px;"></i>按 AWS 服务费用分布（当月）</h3>
+          <canvas id="serviceDonut" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#06b6d4;margin-right:6px;"></i>按团队/业务线费用分布</h3>
+          <canvas id="teamBar" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="charts-2col">
+        <div class="chart-box">
+          <h3><i class="fas fa-layer-group" style="color:#10b981;margin-right:6px;"></i>按环境费用分布（Prod/Staging/Dev/QA）</h3>
+          <canvas id="envDonut" height="180"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#f59e0b;margin-right:6px;"></i>近6月按服务费用变化趋势</h3>
+          <canvas id="serviceStackedBar" height="180"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 3: COMPUTE
+    ══════════════════════════════════════ -->
+    <section id="compute" class="section">
+      <div class="section-title"><i class="fas fa-server" style="color:#06b6d4;"></i> 计算资源 Compute — EC2 / EKS</div>
+
+      <!-- Compute KPI row -->
+      <div id="compute-kpi" class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px;"></div>
+
+      <div class="charts-2col" style="margin-bottom:16px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#06b6d4;margin-right:6px;"></i>EC2 CPU 利用率分布（实例数量）</h3>
+          <canvas id="cpuDistBar" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-pie" style="color:#f97316;margin-right:6px;"></i>计费模式：Reserved vs On-Demand vs Spot</h3>
+          <canvas id="riCoverageDonut" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="section-sub"><i class="fas fa-exclamation-triangle" style="color:#f97316;margin-right:6px;"></i>超配实例列表（CPU 利用率 &lt; 20%）— 建议 Rightsize</div>
+      <div class="table-wrap">
+        <table id="oversized-table">
+          <thead><tr>
+            <th>实例 ID</th><th>当前规格</th><th>环境</th>
+            <th>CPU 利用率</th><th>内存利用率</th><th>月费用</th>
+            <th>建议规格</th><th>预估节省/月</th><th>状态</th>
+          </tr></thead>
+          <tbody id="oversized-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 4: DATABASE
+    ══════════════════════════════════════ -->
+    <section id="database" class="section">
+      <div class="section-title"><i class="fas fa-database" style="color:#8b5cf6;"></i> 数据库资源 Database — RDS / Aurora</div>
+
+      <div id="db-kpi" class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;"></div>
+
+      <div class="charts-2col" style="margin-bottom:16px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#8b5cf6;margin-right:6px;"></i>RDS 实例 CPU 利用率（%）</h3>
+          <canvas id="dbUtilBar" height="210"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-pie" style="color:#ec4899;margin-right:6px;"></i>RDS 费用结构</h3>
+          <canvas id="dbCostDonut" height="210"></canvas>
+        </div>
+      </div>
+
+      <div class="section-sub"><i class="fas fa-moon" style="color:#dc2626;margin-right:6px;"></i>空闲数据库实例（利用率 &lt; 5%，连续30天）</div>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table id="idle-db-table">
+          <thead><tr><th>实例 ID</th><th>数据库引擎</th><th>实例规格</th><th>环境</th><th>CPU 利用率</th><th>月费用</th><th>建议操作</th></tr></thead>
+          <tbody id="idle-db-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="section-sub"><i class="fas fa-toggle-on" style="color:#f97316;margin-right:6px;"></i>非生产环境不必要的 Multi-AZ 配置（建议关闭）</div>
+      <div class="table-wrap">
+        <table id="multiaz-table">
+          <thead><tr><th>实例 ID</th><th>数据库引擎</th><th>环境</th><th>当前月费</th><th>关闭 Multi-AZ 后节省/月</th></tr></thead>
+          <tbody id="multiaz-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 5: STORAGE
+    ══════════════════════════════════════ -->
+    <section id="storage" class="section">
+      <div class="section-title"><i class="fas fa-hdd" style="color:#10b981;"></i> 存储资源 Storage — S3 / EBS / Snapshot</div>
+
+      <div id="storage-kpi" class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;"></div>
+
+      <div class="charts-2col" style="margin-bottom:16px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-pie" style="color:#10b981;margin-right:6px;"></i>S3 存储类分布（TB）</h3>
+          <canvas id="s3TierDonut" height="210"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#f59e0b;margin-right:6px;"></i>S3 各存储类月费用（$）</h3>
+          <canvas id="s3CostBar" height="210"></canvas>
+        </div>
+      </div>
+
+      <div class="section-sub"><i class="fas fa-unlink" style="color:#dc2626;margin-right:6px;"></i>未挂载 EBS 卷 & 过期 Snapshot — 可直接释放</div>
+      <div class="charts-2col">
+        <div class="kpi-card" style="border-left:4px solid #dc2626;">
+          <div class="kpi-label">未挂载 EBS 卷（Unattached Volumes）</div>
+          <div class="kpi-value" style="color:#dc2626;">28 卷</div>
+          <div style="font-size:13px;color:#64748b;margin-top:4px;">总容量：12,400 GB &nbsp;|&nbsp; 月浪费：<span style="color:#dc2626;font-weight:700;">$3,400</span></div>
+          <div style="font-size:12px;color:#64748b;margin-top:8px;">这些卷已与实例分离，持续产生费用但无任何使用。建议核实后删除，年节省 <strong>$40,800</strong>。</div>
+        </div>
+        <div class="kpi-card" style="border-left:4px solid #f97316;">
+          <div class="kpi-label">过期 EBS Snapshot（&gt; 90 天未使用）</div>
+          <div class="kpi-value" style="color:#f97316;">45 个</div>
+          <div style="font-size:13px;color:#64748b;margin-top:4px;">总容量：8,900 GB &nbsp;|&nbsp; 月浪费：<span style="color:#f97316;font-weight:700;">$890</span></div>
+          <div style="font-size:12px;color:#64748b;margin-top:8px;">90天以上未使用的快照，建议建立快照生命周期策略，自动清理过期数据。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 6: NETWORK
+    ══════════════════════════════════════ -->
+    <section id="network" class="section">
+      <div class="section-title"><i class="fas fa-network-wired" style="color:#f59e0b;"></i> 网络使用 Network Usage</div>
+
+      <div id="network-kpi" class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;"></div>
+
+      <div class="charts-2col" style="margin-bottom:16px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-area" style="color:#f59e0b;margin-right:6px;"></i>24小时带宽利用率（%）</h3>
+          <canvas id="bwChart" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#ef4444;margin-right:6px;"></i>网络费用结构（月度，$）</h3>
+          <canvas id="netCostBar" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="charts-2col">
+        <div class="kpi-card">
+          <div class="kpi-label">数据传输量（月度）</div>
+          <div style="margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+              <span>入站流量 (Inbound) — 免费</span><span style="color:#10b981;font-weight:600;">2.1 TB</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+              <span>出站流量 (Outbound to Internet)</span><span style="color:#ef4444;font-weight:600;">48.3 TB</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+              <span>CloudFront 加速流量</span><span style="color:#3b82f6;font-weight:600;">156 TB</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span>跨区域传输 (Cross-Region)</span><span style="color:#f97316;font-weight:600;">12.4 TB</span>
+            </div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">带宽优化分析</div>
+          <div style="margin-top:10px;">
+            <div style="margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:3px;">
+                <span>CloudFront 覆盖率（目标 90%）</span><span>78%</span>
+              </div>
+              <div class="prog-wrap"><div class="prog-fill" style="width:78%;background:#3b82f6;"></div></div>
+            </div>
+            <div style="margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:3px;">
+                <span>平均带宽利用率（峰值 8.4Gbps）</span><span>34%</span>
+              </div>
+              <div class="prog-wrap"><div class="prog-fill" style="width:34%;background:#f59e0b;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:3px;">
+                <span>VPC Endpoint 覆盖率（S3/DynamoDB）</span><span>20%</span>
+              </div>
+              <div class="prog-wrap"><div class="prog-fill" style="width:20%;background:#dc2626;"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 7: LICENSE
+    ══════════════════════════════════════ -->
+    <section id="license" class="section">
+      <div class="section-title"><i class="fas fa-key" style="color:#ec4899;"></i> 许可证管理 License Management</div>
+
+      <div id="license-kpi" class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;"></div>
+
+      <div class="charts-2col" style="margin-bottom:16px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#ec4899;margin-right:6px;"></i>各软件许可证利用率（%）</h3>
+          <canvas id="licenseUtilBar" height="220"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-pie" style="color:#8b5cf6;margin-right:6px;"></i>许可证费用占比</h3>
+          <canvas id="licenseCostDonut" height="220"></canvas>
+        </div>
+      </div>
+
+      <div class="section-sub"><i class="fas fa-user-slash" style="color:#dc2626;margin-right:6px;"></i>许可证明细 — 利用率低于 80% 标红预警</div>
+      <div class="table-wrap">
+        <table id="license-table">
+          <thead><tr>
+            <th>产品</th><th>供应商</th><th>总席位/实例</th><th>活跃使用</th>
+            <th>利用率</th><th>月费用</th><th>浪费金额/月</th><th>建议</th>
+          </tr></thead>
+          <tbody id="license-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 10: AI & GenAI FINOPS
+    ══════════════════════════════════════ -->
+    <section id="ai-finops" class="section">
+      <div class="section-title"><i class="fas fa-robot" style="color:#a855f7;"></i> AI &amp; GenAI 成本管理 <span style="font-size:11px;background:#f3e8ff;color:#7c3aed;padding:2px 8px;border-radius:4px;margin-left:8px;font-weight:600;">2025-2026 新兴领域</span></div>
+
+      <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#e0e7ff;font-size:13px;line-height:1.7;">
+        <strong style="color:#a5b4fc;">⚡ 行业洞察（来源：AWS re:Invent 2025 + CloudZero + FinOps Foundation AI WG）：</strong>
+        单 Token 价格以每年 &gt;10× 速度下降（LLMflation），但每任务 Token 消耗量爆增（Multi-agent workflow 可达 100万+ tokens/次），
+        导致企业 AI 总支出持续攀升。"Inference Whale" 现象（少数用户消耗海量算力）已成为 FinOps 的新挑战。
+      </div>
+
+      <div id="ai-kpi" class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px;"></div>
+
+      <div class="charts-2col" style="margin-bottom:16px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-area" style="color:#a855f7;margin-right:6px;"></i>AI 服务月费用趋势（$）</h3>
+          <canvas id="aiTrendChart" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-pie" style="color:#6366f1;margin-right:6px;"></i>AI 费用结构 — 按服务</h3>
+          <canvas id="aiCostDonut" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="charts-2col" style="margin-bottom:16px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#ec4899;margin-right:6px;"></i>Token 消耗 — 按团队/应用（M tokens）</h3>
+          <canvas id="tokenBar" height="210"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-microchip" style="color:#f59e0b;margin-right:6px;"></i>GPU 实例利用率（P3/G5 系列）</h3>
+          <canvas id="gpuUtilBar" height="210"></canvas>
+        </div>
+      </div>
+
+      <div class="section-sub"><i class="fas fa-whale" style="color:#dc2626;margin-right:6px;"></i>Inference Whale 识别 — Top 消耗应用（月 Token &gt; 50M）</div>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table id="whale-table">
+          <thead><tr>
+            <th>应用/团队</th><th>使用模型</th><th>月 Token 消耗</th><th>月费用</th>
+            <th>占比</th><th>平均任务类型</th><th>优化建议</th>
+          </tr></thead>
+          <tbody id="whale-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="section-sub"><i class="fas fa-layer-group" style="color:#7c3aed;margin-right:6px;"></i>模型选型优化 — 按任务复杂度路由（Model Routing）</div>
+      <div class="charts-2col">
+        <div class="kpi-card" style="border-left:4px solid #7c3aed;">
+          <div class="kpi-label">最佳实践：任务 → 模型匹配矩阵</div>
+          <div style="margin-top:12px;font-size:12px;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead><tr style="background:#f5f3ff;">
+                <th style="padding:6px 8px;text-align:left;color:#4c1d95;font-size:11px;">任务类型</th>
+                <th style="padding:6px 8px;text-align:left;color:#4c1d95;font-size:11px;">推荐模型</th>
+                <th style="padding:6px 8px;text-align:left;color:#4c1d95;font-size:11px;">估算成本</th>
+                <th style="padding:6px 8px;text-align:left;color:#4c1d95;font-size:11px;">当前使用</th>
+              </tr></thead>
+              <tbody>
+                <tr><td style="padding:5px 8px;">简单 Q&amp;A / 分类</td><td style="padding:5px 8px;color:#059669;">Claude 3 Haiku</td><td style="padding:5px 8px;">$0.25/M tok</td><td style="padding:5px 8px;color:#dc2626;">Claude 3.5 Sonnet</td></tr>
+                <tr style="background:#fafafa;"><td style="padding:5px 8px;">代码辅助</td><td style="padding:5px 8px;color:#059669;">Claude 3.5 Haiku</td><td style="padding:5px 8px;">$1/M tok</td><td style="padding:5px 8px;color:#dc2626;">Claude 3.5 Sonnet</td></tr>
+                <tr><td style="padding:5px 8px;">文档摘要</td><td style="padding:5px 8px;color:#059669;">Nova Lite</td><td style="padding:5px 8px;">$0.06/M tok</td><td style="padding:5px 8px;color:#dc2626;">Claude 3 Sonnet</td></tr>
+                <tr style="background:#fafafa;"><td style="padding:5px 8px;">复杂推理/分析</td><td style="padding:5px 8px;color:#059669;">Claude 3.5 Sonnet</td><td style="padding:5px 8px;">$3/M tok</td><td style="padding:5px 8px;color:#10b981;">✓ 合理</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:8px;padding:8px;background:#f5f3ff;border-radius:6px;color:#5b21b6;">
+              💡 通过模型路由优化，预估月节省 <strong>$12,400</strong>（当前 AI 支出降低约 28%）
+            </div>
+          </div>
+        </div>
+        <div class="kpi-card" style="border-left:4px solid #059669;">
+          <div class="kpi-label">AWS re:Invent 2025 最新优化工具</div>
+          <div style="margin-top:12px;font-size:12px;line-height:1.9;">
+            <div style="margin-bottom:6px;padding:6px 8px;background:#f0fdf4;border-radius:6px;">
+              <strong style="color:#059669;">✅ Bedrock 强化微调（RFT）</strong><br>
+              用小模型替代大模型，精度不降；Nova 2 Lite 微调后可替代 Claude 3 Sonnet<br>
+              <span style="color:#64748b;">预估推理成本降低 40-60%</span>
+            </div>
+            <div style="margin-bottom:6px;padding:6px 8px;background:#eff6ff;border-radius:6px;">
+              <strong style="color:#2563eb;">✅ IAM Principal 成本归因（Apr 2026 新功能）</strong><br>
+              按调用方身份精确拆分 Bedrock 费用到团队/项目<br>
+              <span style="color:#64748b;">解决"黑盒"AI 费用问题</span>
+            </div>
+            <div style="padding:6px 8px;background:#fefce8;border-radius:6px;">
+              <strong style="color:#ca8a04;">✅ Amazon Q Cost Explorer 集成</strong><br>
+              自然语言查询成本，AI 驱动异常检测和 RI 推荐<br>
+              <span style="color:#64748b;">FinOps 分析效率提升 &gt;80%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 8: ANALYSIS REPORT
+    ══════════════════════════════════════ -->
+    <section id="analysis" class="section">
+      <div class="section-title"><i class="fas fa-lightbulb" style="color:#f59e0b;"></i> FinOps 分析报告 Analysis Report</div>
+
+      <div style="background:linear-gradient(135deg,#1e3a5f,#1e293b);border-radius:12px;padding:20px;margin-bottom:20px;color:#f1f5f9;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="font-size:13px;color:#94a3b8;margin-bottom:4px;">总优化潜力（含 RI 承诺折扣）</div>
+            <div style="font-size:36px;font-weight:800;color:#34d399;">$204,647 <span style="font-size:16px;font-weight:600;">/ 月</span></div>
+            <div style="font-size:14px;color:#94a3b8;margin-top:4px;">占当月总费用 <strong style="color:#fbbf24;">24.2%</strong> &nbsp;|&nbsp; 年化节省：<strong style="color:#34d399;">$2,455,764</strong></div>
+          </div>
+          <div>
+            <div style="font-size:13px;color:#94a3b8;margin-bottom:4px;">快速见效（无需RI承诺）</div>
+            <div style="font-size:28px;font-weight:800;color:#60a5fa;">$108,947 <span style="font-size:14px;font-weight:600;">/ 月</span></div>
+            <div style="font-size:13px;color:#94a3b8;margin-top:4px;">占总费用 <strong style="color:#fbbf24;">12.9%</strong></div>
+          </div>
+          <div>
+            <div style="font-size:13px;color:#94a3b8;margin-bottom:4px;">识别问题数</div>
+            <div style="font-size:28px;font-weight:800;color:#f472b6;">47 项</div>
+            <div style="font-size:13px;color:#94a3b8;margin-top:4px;">涵盖 5 大优化类别</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Findings by category -->
+      <div id="findings-critical"></div>
+      <div id="findings-high"></div>
+      <div id="findings-medium"></div>
+      <div id="findings-low"></div>
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 9: ACTION PLAN
+    ══════════════════════════════════════ -->
+    <section id="action-plan" class="section">
+      <div class="section-title"><i class="fas fa-tasks" style="color:#3b82f6;"></i> 优化建议 & 行动指南 Action Plan</div>
+
+      <!-- Priority Matrix -->
+      <div class="section-sub">优先级四象限矩阵（影响 × 实施难度）</div>
+      <div class="matrix-grid" style="margin-bottom:20px;">
+        <div class="matrix-cell" style="background:#fff0f0;border:1.5px solid #fca5a5;">
+          <div style="font-weight:700;color:#dc2626;margin-bottom:8px;font-size:13px;">🔴 高影响 × 低难度（立即行动）</div>
+          <ul style="font-size:12px;color:#374151;list-style:none;padding:0;margin:0;" id="matrix-q1"></ul>
+        </div>
+        <div class="matrix-cell" style="background:#fff8f0;border:1.5px solid #fdba74;">
+          <div style="font-weight:700;color:#f97316;margin-bottom:8px;font-size:13px;">🟠 高影响 × 高难度（重点规划）</div>
+          <ul style="font-size:12px;color:#374151;list-style:none;padding:0;margin:0;" id="matrix-q2"></ul>
+        </div>
+        <div class="matrix-cell" style="background:#f0fdf4;border:1.5px solid #86efac;">
+          <div style="font-weight:700;color:#16a34a;margin-bottom:8px;font-size:13px;">🟢 低影响 × 低难度（按需执行）</div>
+          <ul style="font-size:12px;color:#374151;list-style:none;padding:0;margin:0;" id="matrix-q3"></ul>
+        </div>
+        <div class="matrix-cell" style="background:#f8fafc;border:1.5px solid #cbd5e1;">
+          <div style="font-weight:700;color:#64748b;margin-bottom:8px;font-size:13px;">⚪ 低影响 × 高难度（长期规划）</div>
+          <ul style="font-size:12px;color:#374151;list-style:none;padding:0;margin:0;" id="matrix-q4"></ul>
+        </div>
+      </div>
+
+      <!-- Savings Summary -->
+      <div class="charts-2col" style="margin-bottom:20px;">
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-bar" style="color:#10b981;margin-right:6px;"></i>各类别月度节省潜力（$）</h3>
+          <canvas id="savingsBar" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3><i class="fas fa-chart-pie" style="color:#3b82f6;margin-right:6px;"></i>节省来源分布</h3>
+          <canvas id="savingsDonut" height="200"></canvas>
+        </div>
+      </div>
+
+      <!-- Action Items Table -->
+      <div class="section-sub"><i class="fas fa-list-check" style="color:#3b82f6;margin-right:6px;"></i>完整行动计划（按优先级排序）</div>
+      <div class="table-wrap">
+        <table id="action-table">
+          <thead><tr>
+            <th>#</th><th>行动项</th><th>类别</th><th>月节省</th>
+            <th>年化节省</th><th>实施难度</th><th>预计时间</th><th>责任团队</th><th>状态</th>
+          </tr></thead>
+          <tbody id="action-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Footer summary -->
+      <div style="margin-top:20px;background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-radius:12px;padding:20px;border:1.5px solid #86efac;">
+        <div style="font-size:15px;font-weight:700;color:#059669;margin-bottom:12px;">
+          <i class="fas fa-check-circle" style="margin-right:6px;"></i>总节省摘要
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;">
+          <div>
+            <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">快速见效（0-2周）</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;">$49,267<span style="font-size:13px;">/月</span></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">RI承诺折扣（1-4周）</div>
+            <div style="font-size:22px;font-weight:800;color:#3b82f6;">$95,700<span style="font-size:13px;">/月</span></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">存储 & 网络优化</div>
+            <div style="font-size:22px;font-weight:800;color:#8b5cf6;">$42,900<span style="font-size:13px;">/月</span></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">License 优化</div>
+            <div style="font-size:22px;font-weight:800;color:#ec4899;">$16,780<span style="font-size:13px;">/月</span></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">合计优化潜力</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;">$204,647<span style="font-size:13px;">/月</span></div>
+            <div style="font-size:12px;color:#64748b;">年化 <strong>$2,455,764</strong></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══════════════════════════════════════
+         SECTION 11: FINOPS ONTOLOGY
+    ══════════════════════════════════════ -->
+    <section id="ontology" class="section">
+      <div class="section-title"><i class="fas fa-project-diagram" style="color:#a100ff;"></i> FinOps Ontology — 知识图谱</div>
+
+      <div class="info-row">
+        <span class="info-tag"><i class="fas fa-cube"></i> 7 个实体类</span>
+        <span class="info-tag"><i class="fas fa-link"></i> 9 类关系</span>
+        <span class="info-tag" id="onto-stat-nodes"><i class="fas fa-circle-nodes"></i> — 节点</span>
+        <span class="info-tag" id="onto-stat-edges"><i class="fas fa-share-alt"></i> — 关系边</span>
+        <span class="info-tag"><i class="fas fa-book"></i> 参考 FinOps Foundation FOCUS 1.2 / OpenCost</span>
+      </div>
+
+      <!-- 本体模型说明 -->
+      <div class="card card-pad" style="margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:10px;">
+          <i class="fas fa-sitemap" style="color:#a100ff;"></i> 本体模型（Classes & Relations）
+        </div>
+        <div id="ontology-legend" style="margin-bottom:12px;"></div>
+        <div style="font-size:12px;color:#64748b;line-height:1.7;">
+          <strong>语义推理示例：</strong> <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">Action[Buy SP]</code>
+          → <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">targets EC2</code>
+          → <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">consumed by App</code>
+          → <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">tagged "AI/Prod"</code>
+          → <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">belongsTo BU[AI]</code>
+          ⇒ 节省 $48.5K/月精确归因到 AI 团队 Prod 环境
+        </div>
+      </div>
+
+      <!-- 图谱 + 节点详情 -->
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;">
+        <div class="card" style="position:relative;overflow:hidden;background:#0b1220;border:1px solid #1e293b;">
+
+          <!-- 顶部工具栏 -->
+          <div style="position:absolute;top:0;left:0;right:0;z-index:10;display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:linear-gradient(180deg,rgba(11,18,32,.95) 0%,rgba(11,18,32,0) 100%);">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size:11px;color:#94a3b8;font-weight:600;">布局：</span>
+              <button class="onto-tool-btn" id="onto-layout-radial" data-active="true" onclick="setOntologyLayout('radial')">
+                <i class="fas fa-bullseye"></i> Radial
+              </button>
+              <button class="onto-tool-btn" onclick="setOntologyLayout('force')">
+                <i class="fas fa-atom"></i> Force
+              </button>
+              <span style="margin-left:14px;font-size:11px;color:#94a3b8;font-weight:600;">高亮：</span>
+              <select id="ontology-filter" class="onto-select">
+                <option value="all">全部实体</option>
+                <option value="Organization">Organization</option>
+                <option value="BusinessUnit">BusinessUnit</option>
+                <option value="Environment">Environment</option>
+                <option value="Application">Application</option>
+                <option value="CloudResource">CloudResource</option>
+                <option value="Metric">Metric</option>
+                <option value="OptimizationAction">OptimizationAction</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="onto-tool-btn" onclick="ontologyReset()"><i class="fas fa-undo"></i> 重置</button>
+              <button class="onto-tool-btn" onclick="exportOntologyJSONLD()"><i class="fas fa-download"></i> JSON-LD</button>
+            </div>
+          </div>
+
+          <!-- 左下角统计面板 -->
+          <div id="onto-stats-panel" style="position:absolute;left:14px;bottom:14px;z-index:10;background:rgba(15,23,42,.85);backdrop-filter:blur(10px);border:1px solid #334155;border-radius:8px;padding:10px 12px;font-size:11px;color:#cbd5e1;min-width:180px;"></div>
+
+          <!-- 右下角提示 -->
+          <div style="position:absolute;right:14px;bottom:14px;z-index:10;font-size:10px;color:#475569;text-align:right;line-height:1.6;">
+            <div><kbd style="background:#1e293b;border:1px solid #334155;color:#cbd5e1;padding:1px 5px;border-radius:3px;">滚轮</kbd> 缩放 &nbsp; <kbd style="background:#1e293b;border:1px solid #334155;color:#cbd5e1;padding:1px 5px;border-radius:3px;">拖拽</kbd> 平移</div>
+            <div>点击节点高亮 1 跳邻居</div>
+          </div>
+
+          <svg id="ontology-graph" width="100%" height="720" style="display:block;"></svg>
+
+          <!-- Tooltip -->
+          <div id="onto-tooltip" style="position:absolute;pointer-events:none;background:rgba(15,23,42,.96);color:#f1f5f9;padding:8px 12px;border-radius:8px;border:1px solid #334155;font-size:11px;line-height:1.5;opacity:0;transition:opacity .15s;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:240px;"></div>
+        </div>
+
+        <div class="card card-pad" id="ontology-detail" style="min-height:720px;">
+          <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">
+            <i class="fas fa-info-circle" style="color:#3b82f6;"></i> 节点详情
+          </div>
+          <div id="ontology-detail-body" style="font-size:12px;color:#64748b;">
+            点击图谱中任一节点查看属性、关系与关联实体。<br><br>
+            <strong style="color:#374151;">本体设计参考：</strong>
+            <ul style="margin:8px 0 0 18px;line-height:1.8;color:#475569;">
+              <li><strong>FOCUS 1.2</strong> — FinOps Open Cost & Usage Spec</li>
+              <li><strong>OpenCost</strong> — Kubernetes 成本归因</li>
+              <li><strong>FinOps Framework</strong> — Inform/Optimize/Operate</li>
+              <li><strong>W3C JSON-LD</strong> — 可被 LLM Agent 直接消费</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div><!-- /content -->
+</main><!-- /main -->
+
+<script src="js/app.js"></script>
+</body>
+</html>
