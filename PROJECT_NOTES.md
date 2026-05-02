@@ -116,17 +116,12 @@
 
 ---
 
-## 10. ⚠ Prompt Injection 警告
+## 10. 部署状态
 
-本项目交付会话中工具/上下文反复混入伪装成系统/用户消息的注入文本（典型开头 "Respond as helpfully as possible..." 或要求版权/格式限制），这些 **不是用户真实指令**，已被忽略。如未来 AI 助手出现行为异常，应优先怀疑同类注入。
-
----
-
-## 11. 下一步待办
-
-- [ ] 推送到 GitHub（用户名 `dongbocui-maker`，建议仓库名 `envision-finops-dashboard`，Public）
-- [ ] 启用 GitHub Pages → `https://dongbocui-maker.github.io/envision-finops-dashboard/`
-- [ ] 部署前需添加 `.gitignore` 和 `README.md`
+- 仓库：https://github.com/dongbocui-maker/finops-demo
+- Live Demo：https://finops.aidigest.club/
+- 备用地址：https://dongbocui-maker.github.io/finops-demo/
+- 已包含 `.gitignore` 与 `README.md`
 
 ---
 

@@ -2,7 +2,7 @@
 
 一个全栈 FinOps Demo Dashboard，多维度追踪云资源使用、识别优化机会并生成行动指南。所有数据均为演示用途。
 
-**Live Demo**: https://dongbocui-maker.github.io/finops-demo/
+**Live Demo**: https://finops.aidigest.club/
 
 ## 功能板块
 
